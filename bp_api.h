@@ -27,7 +27,7 @@ class BP {
 
 public:
     BP(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
-        bool isGlobalHist, bool isGlobalTable, int Shared) : btbSize(btbSize), ;
+        bool isGlobalHist, bool isGlobalTable, int Shared);
 
     bool BP_predict(uint32_t pc, uint32_t *dst);
 

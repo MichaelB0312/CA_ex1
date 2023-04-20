@@ -9,7 +9,7 @@ enum State{SNT,WNT,WT,ST};
 BP::BP(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
         bool isGlobalHist, bool isGlobalTable, int Shared){
 
-
+	//
 	btbSize = btbSize;
 	historySize = historySize;
 	tagSize = tagSize;
