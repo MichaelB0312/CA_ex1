@@ -10,34 +10,9 @@ extern "C" {
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <cmath>
 
-class BP {
-
-    unsigned btbSize;
-    unsigned historySize;
-    unsigned tagSize;
-    unsigned fsmState;
-    bool isGlobalHist;
-    bool isGlobalTable;
-    int Shared;
-    int *state_chooser;   //2^history_size
-    int history_reg; 
-
-
-public:
-    BP(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
-        bool isGlobalHist, bool isGlobalTable, int Shared);
-
-    bool BP_predict(uint32_t pc, uint32_t *dst);
-
-    void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst);
-
-    void BP_GetStats(SIM_stats *curStats);
-
-    ~ BP(){};
-
-}
+/*
+*/
 
 /* A structure to return information about the currect simulator state */
 typedef struct {
