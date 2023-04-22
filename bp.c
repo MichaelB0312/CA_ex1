@@ -24,7 +24,7 @@ struct BTB_table{
     bool isGlobalTable;
     int Shared;
 
-    int *state_chooser;   //2^history_size
+    int **state_chooser;   //pointer to state-chooser arrays or array(global case) of size: 2^history_size
 }
 
 
@@ -94,12 +94,50 @@ struct BTB_table *table_ptr;
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
 			bool isGlobalHist, bool isGlobalTable, int Shared){
 
-
+	//initiate parameters, check their validity
 	table_ptr = new BTB_row[btbSize];
+	if(!table_ptr) return -1;
+
+	table_ptr->btbSize = btbSize;
+	int flag_Size = 0;
+	for(int i=1; i<=32; i=i*2){
+		if(btbSize == i){
+			flag_Size = 1;
+		}
+	}
+	if(!flag_Size) return -1;
+
+	table_ptr->historySize = historySize;
+	if(historySize < 1 || historySize > 8) return -1;
+
+	table_ptr->tagSize = tagSize;
+	if((tagSize < 0) || (tagSize > 30 - static_cast<int>(log2(btbSize)) ) ) return -1;
+
+	table_ptr->fsmState = fsmState;
+	if( (fsmState < 0) || (fsmState > 3) ) return -1;
+
+	table_ptr->isGlobalHist = isGlobalHist;
+	table_ptr->isGlobalTable = isGlobalTable;
+	table_ptr->Shared = Shared;
+
+	//initiate state-chooser arrays
+	if(!isGlobalHist){//local case
+
+		//access: *((state_chooser + yyyy) + history_reg
+		table_ptr->state_chooser = new int*[btbSize];
+		for(int i=0; i<btbSize; i++ ){
+			(table_ptr->state_chooser)[i] = new int[pow(2,historySize)];
+			memset((table_ptr->state_chooser)[i], fsmState, (pow(2, historySize))*sizeof(int));
+		}
+	}
+	else{//global
+		table_ptr->state_chooser = new int*[1];
+		*(table_ptr->state_chooser) = new int[pow(2, historySize)-1];
+		memset(*(table_ptr->state_chooser), fsmState, (pow(2, historySize))*sizeof(int));
+	}
 
 
-
-	return -1;
+	return 0;
 }
 
 bool BP_predict(uint32_t pc, uint32_t *dst){
