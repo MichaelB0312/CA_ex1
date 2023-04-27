@@ -26,67 +26,7 @@ struct BTB_table{
 
     BTB_row* rows;
     int **state_chooser;   //pointer to state-chooser arrays or array(global case) of size: 2^history_size
-}
-
-
-
-/*
-class BP {
-
-    unsigned btbSize;
-    unsigned historySize;
-    unsigned tagSize;
-    unsigned fsmState;
-    bool isGlobalHist;
-    bool isGlobalTable;
-    int Shared;
-    int *state_chooser;   //2^history_size
-    int history_reg; 
-
-
-public:// we need constructor here and destructor and helper functions... but the required functions for the excersie..redundant
-    BP(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
-        bool isGlobalHist, bool isGlobalTable, int Shared){
-
-
-
-    }
-
-    //bool BP_predict(uint32_t pc, uint32_t *dst);
-
-    //void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst);
-
-    //void BP_GetStats(SIM_stats *curStats);
-
-    ~ BP(){
-
-    }
-
-}
-
-
-
-BP::BP(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
-        bool isGlobalHist, bool isGlobalTable, int Shared){
-
-	//
-	btbSize = btbSize;
-	historySize = historySize;
-	tagSize = tagSize;
-	fsmState = fsmState;
-	isGlobalHist = isGlobalHist;
-	isGlobalTable = isGlobalTable;
-
-	state_chooser = new int[pow(2,historySize)-1];  
-
-	// initiate state_chooser to SNT
-	for (int i=0 ; i < pow(2,historySize) ; i++){
-		state_chooser[i] = fsmState;
-	} 
-
-	history_reg = 0;
-}
-*/
+};
 
 // we will act like in ADT init style
 struct BTB_table *table_ptr; 
@@ -126,7 +66,7 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 	table_ptr->Shared = Shared;
 
 	//initiate state-chooser arrays
-	if(!isGlobalHist){//local case
+	if(!isGlobalTable){//local case
 
 		//access: *((state_chooser + yyyy) + history_reg
 		table_ptr->state_chooser = new int*[btbSize];
@@ -146,8 +86,56 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 }
 
 bool BP_predict(uint32_t pc, uint32_t *dst){
-
+	uint32_t shift_pc = pc >> 2;
+	uint32_t index_mask =  pow(2,table_ptr->btbSize)-1;
+	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1;
+	uint32_t history_mask = pow(2,table_ptr->historySize)-1;
+	uint32_t BTB_index = shift_pc & index_mask;
+	uint32_t shift_tag = shift_pc >> log2(tabkle_ptr->btbSize);
+	uint32_t pc_tag = shift_tag & tag_mask;
+	//index of hist and state - global or local
+	int hist_index = 0;
+	int state_index = 0;
+	if (!(table_ptr->isGlobalHist)){
+		hist_index = BTB_index;
+	}
+	if(!(table_ptr->isGlobalTable)){
+		state_index = BTB_index;
+	}
 	
+	//shared
+	uint32_t history_p = 0;
+	history_p = table_ptr->state_chooser[hist_index];
+	if(table_ptr->Shared == 1){
+		history_p = shift_pc ^ history_p;
+	} else if (table_ptr->Shared == 2){
+		shift_pc_16 = pc >> 16;
+		history_p = shift_pc_16 ^ history_p;
+	}
+	history_p = history_p & history_mask;
+	
+	//check if target is known
+	if ((table_ptr->rows[BTB_index]).target == 0){
+		*dst = pc + 4;
+		return false;
+	}
+	//check if tag matches
+	if ((table_ptr->rows[BTB_index]).tag != pc_tag){
+		*dst = pc + 4;
+		return false;
+	}
+
+	//tag matches, jump according to state	
+	int state = table_ptr->state_chooser[state_index][history_p];
+	if ((state == WNT) | (state == NT)){
+		*dst = pc + 4;
+		return false;
+	} else if ((state == WT) | (state == T)){
+		*dst = table_ptr->rows[BTB_index].target;
+		return true;
+	}
+	
+	*dst = pc + 4;
 	return false;
 }
 
