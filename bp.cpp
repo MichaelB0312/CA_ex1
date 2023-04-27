@@ -3,6 +3,7 @@
 
 #include "bp_api.h"
 #include <cmath>
+#include <cstring>
 
 enum State{SNT,WNT,WT,ST};
 
@@ -91,7 +92,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1;
 	uint32_t history_mask = pow(2,table_ptr->historySize)-1;
 	uint32_t BTB_index = shift_pc & index_mask;
-	uint32_t shift_tag = shift_pc >> log2(tabkle_ptr->btbSize);
+	uint32_t shift_tag = shift_pc >> int(log2(table_ptr->btbSize));
 	uint32_t pc_tag = shift_tag & tag_mask;
 	//index of hist and state - global or local
 	int hist_index = 0;
@@ -105,10 +106,11 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 	
 	//shared
 	uint32_t history_p = 0;
-	history_p = table_ptr->state_chooser[hist_index];
+	history_p = *(table_ptr->state_chooser[hist_index]);
 	if(table_ptr->Shared == 1){
 		history_p = shift_pc ^ history_p;
 	} else if (table_ptr->Shared == 2){
+		uint32_t shift_pc_16 = 0;
 		shift_pc_16 = pc >> 16;
 		history_p = shift_pc_16 ^ history_p;
 	}
@@ -127,10 +129,10 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	//tag matches, jump according to state	
 	int state = table_ptr->state_chooser[state_index][history_p];
-	if ((state == WNT) | (state == NT)){
+	if ((state == WNT) | (state == SNT)){
 		*dst = pc + 4;
 		return false;
-	} else if ((state == WT) | (state == T)){
+	} else if ((state == WT) | (state == ST)){
 		*dst = table_ptr->rows[BTB_index].target;
 		return true;
 	}
