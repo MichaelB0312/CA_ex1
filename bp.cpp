@@ -70,13 +70,17 @@ void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_ind
 	history_p = (table_ptr->rows[*hist_index]).history_reg;
 	if(table_ptr->Shared == 1){
 		history_p = shift_pc ^ history_p;
-	} else if (table_ptr->Shared == 2){
+	}
+	if (table_ptr->Shared == 2){
 		uint32_t shift_pc_16 = 0;
 		shift_pc_16 = pc >> 16;
 		history_p = shift_pc_16 ^ history_p;
 	}
 	history_p = history_p & *history_mask;
-	(table_ptr->rows[*hist_index]).history_reg = history_p;	
+	if(table_ptr->Shared == 0){
+
+		(table_ptr->rows[*hist_index]).history_reg = history_p;	
+	}
 
 }
 
@@ -203,7 +207,11 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
 
 		if(!(table_ptr->isGlobalTable)){
-			memset((table_ptr->state_chooser)[state_index], table_ptr->fsmState, (pow(2,table_ptr-> historySize))*sizeof(int));
+			for(unsigned j=0; j< (1U << table_ptr->historySize); j++){
+				table_ptr->state_chooser[state_index][j] = table_ptr->fsmState;
+			} 
+
+
 		}
 	}
 
