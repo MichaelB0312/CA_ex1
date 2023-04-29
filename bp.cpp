@@ -26,7 +26,7 @@ struct BTB_table{
     int Shared;
 
     BTB_row* rows;
-    int **state_chooser;  //pointer to state-chooser arrays or array(global case) of size: 2^history_size
+    unsigned **state_chooser;  //pointer to state-chooser arrays or array(global case) of size: 2^history_size
 
     SIM_stats btb_stats; //aggregating statsitics
 };
@@ -118,16 +118,21 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 	if(!isGlobalTable){//local case
 
 		//access: *((state_chooser + yyyy) + history_reg
-		table_ptr->state_chooser = new int*[btbSize];
+		table_ptr->state_chooser = new unsigned*[btbSize];
 		for(unsigned i=0; i<btbSize; i++ ){
-			(table_ptr->state_chooser)[i] = new int[(int)pow(2,historySize)];
-			memset((table_ptr->state_chooser)[i], fsmState, (pow(2, historySize))*sizeof(int));
+			(table_ptr->state_chooser)[i] = new unsigned[(int)pow(2,historySize)];
+			for(unsigned j=0; j< (1U << historySize); j++){
+				table_ptr->state_chooser[i][j] = fsmState;
+			} 
 		}
 	}
 	else{//global
-		table_ptr->state_chooser = new int*[1];
-		*(table_ptr->state_chooser) = new int[(int)pow(2, historySize)-1];
-		memset(*(table_ptr->state_chooser), fsmState, (pow(2, historySize))*sizeof(int));
+		table_ptr->state_chooser = new unsigned*[1];
+		table_ptr->state_chooser[0] = new unsigned[(int)pow(2, historySize)];
+		for(unsigned j=0; j< (1U << historySize); j++){
+			table_ptr->state_chooser[0][j] = fsmState;
+		} 
+
 	}
 
 	table_ptr->btb_stats = {0,0,0};
@@ -178,12 +183,12 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	uint32_t old_hist_reg = (table_ptr->rows[hist_index]).history_reg;
 
+	(table_ptr->rows[BTB_index]).target = targetPc;
 	//if tag not matches to any row, insert a new row
 	if ((table_ptr->rows[BTB_index]).tag != pc_tag){
 		//insert new row. In global_hist case, we use history_reg of first row to all rows in BTB
 		// Namely, hist_index=0. Only tag and target are different in each row(=BTB_index).
 		(table_ptr->rows[BTB_index]).tag = pc_tag;
-		(table_ptr->rows[BTB_index]).target = targetPc;
 
 		if(table_ptr->isGlobalHist){
 			(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
@@ -197,7 +202,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
 
-		if(table_ptr->isGlobalTable){
+		if(!(table_ptr->isGlobalTable)){
 			memset((table_ptr->state_chooser)[state_index], table_ptr->fsmState, (pow(2,table_ptr-> historySize))*sizeof(int));
 		}
 	}
@@ -232,7 +237,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 		int new_state;
 		new_state = old_state + 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
-		(table_ptr->rows[hist_index]).target = targetPc; //for matched tag case
 	}
 
 	if(taken && ((old_state == ST) || (old_state == WT))){
@@ -263,7 +267,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 		int new_state;
 		new_state = old_state - 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
-		(table_ptr->rows[hist_index]).target = targetPc; //for matched tag case
 	}	
 
 	return;
