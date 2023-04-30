@@ -4,7 +4,7 @@
 #include "bp_api.h"
 #include <cmath>
 #include <cstring>
-
+#define TARGET_SIZE 30
 enum State{SNT,WNT,WT,ST};
 
 
@@ -46,7 +46,7 @@ struct BTB_table *table_ptr;
  * return true when prediction is taken, otherwise (prediction is not taken) return false
  */
 void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_index, uint32_t *pc_tag, uint32_t *history_mask){
-///////// from this function, we use: BTB_index, hist_index, state_index,  pc_tag
+	// from this function, we use: BTB_index, hist_index, state_index,  pc_tag
 	uint32_t shift_pc = pc >> 2;  //00zzz...zz yyyy
 	uint32_t index_mask =  pow(2,table_ptr->btbSize)-1; //000..1111
 	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1; // 00..111111
@@ -77,7 +77,6 @@ void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_ind
 	}
 	history_p = history_p & *history_mask;
 	(table_ptr->rows[*hist_index]).history_reg = history_p;	
-
 }
 
 ////zzzzz...zzzz yyyy 00 remeber direct mapping!!
@@ -116,7 +115,6 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 
 	//initiate state-chooser arrays
 	if(!isGlobalTable){//local case
-
 		//access: *((state_chooser + yyyy) + history_reg
 		table_ptr->state_chooser = new unsigned*[btbSize];
 		for(unsigned i=0; i<btbSize; i++ ){
@@ -175,7 +173,6 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
-
 	uint32_t BTB_index; int hist_index; int state_index; 
 	uint32_t pc_tag; uint32_t history_mask;
 
@@ -221,6 +218,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	// upadte statitics and fsm state
 	int old_state;
+	int new_state;
 	if(table_ptr->isGlobalTable){
 
 	 	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
@@ -234,13 +232,11 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	//taken case
 	if(taken && ((old_state == SNT) || (old_state == WNT))){
 		(table_ptr->btb_stats).flush_num++;
-		int new_state;
 		new_state = old_state + 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}
 
 	if(taken && ((old_state == ST) || (old_state == WT))){
-		int new_state;
 		if(old_state == ST){//stuck in a loop
 			new_state = old_state;
 		}
@@ -252,7 +248,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	// Not Taken case:
 	if((!taken) && ((old_state == SNT) || (old_state == WNT))){
-		int new_state;
 		if(old_state == SNT){//stuck in a loop
 			new_state = old_state;
 		}
@@ -264,7 +259,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	if((!taken) && ((old_state == ST) || (old_state == WT))){
 		(table_ptr->btb_stats).flush_num++;
-		int new_state;
 		new_state = old_state - 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}	
@@ -274,6 +268,32 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 //we can do the destructor **inside BP_GetStats
 void BP_GetStats(SIM_stats *curStats){
+	curStats->flush_num = (table_ptr->btb_stats).flush_num;	
+	curStats->br_num = (table_ptr->btb_stats).br_num;	
+	unsigned size = 0;
+	size = (table_ptr->btbSize)*(TARGET_SIZE + table_ptr->tagSize + 1);
+	if(table_ptr->isGlobalHist){
+		size += table_ptr->historySize;
+	} else { //local history
+		size += (table_ptr->historySize)*(table_ptr->btbSize);
+	}
+
+	if(table_ptr->isGlobalTable){
+		size += pow(2,table_ptr->historySize + 1);
+		delete table_ptr->state_chooser[0];
+	} else { //local state chooser table
+		size += (table_ptr->btbSize)*pow(2,table_ptr->historySize + 1);	
+		//free tables 
+		for(unsigned i=0; i<(table_ptr->btbSize); i++){
+			delete[] (table_ptr->state_chooser)[i];
+		}
+	}
+
+	curStats->size = size;
+
+	delete[] table_ptr->state_chooser;
+	delete[] table_ptr->rows;
+	delete[] table_ptr;
 	return;
 }
 
