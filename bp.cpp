@@ -48,10 +48,10 @@ struct BTB_table *table_ptr;
 void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_index, uint32_t *pc_tag, uint32_t *history_mask){
 	// from this function, we use: BTB_index, hist_index, state_index,  pc_tag
 	uint32_t shift_pc = pc >> 2;  //00zzz...zz yyyy
-	uint32_t index_mask =  pow(2,table_ptr->btbSize)-1; //000..1111
+	uint32_t index_mask =  table_ptr->btbSize - 1; //000..1111
 	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1; // 00..111111
 	*history_mask = pow(2,table_ptr->historySize)-1;  
-	*BTB_index = shift_pc & index_mask; //000..yyyy
+	*BTB_index = (shift_pc & index_mask); //000..yyyy
 	uint32_t shift_tag = shift_pc >> int(log2(table_ptr->btbSize)); //00...zzzzz
 	*pc_tag = shift_tag & tag_mask; // 00...zzzzz
 
@@ -79,7 +79,6 @@ void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_ind
 	history_p = history_p & *history_mask;
 	(table_ptr->rows[*hist_index]).history_reg = history_p;	
 	if(table_ptr->Shared == 0){
-
 		(table_ptr->rows[*hist_index]).history_reg = history_p;	
 	}
 }
@@ -92,8 +91,8 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 	table_ptr = new BTB_table;
 	if(!table_ptr) return -1;
 
-	table_ptr -> rows = new BTB_row[btbSize];
-	if(!(table_ptr -> rows)) return -1;
+	table_ptr->rows = new BTB_row[btbSize];
+	if(!(table_ptr->rows)) return -1;
 	memset(table_ptr -> rows, 0, sizeof(BTB_row) * btbSize);
 
 	table_ptr->btbSize = btbSize;
@@ -128,19 +127,15 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 				table_ptr->state_chooser[i][j] = fsmState;
 			} 
 		}
-	}
-	else{//global
+	} else {//global
 		table_ptr->state_chooser = new unsigned*[1];
 		table_ptr->state_chooser[0] = new unsigned[(int)pow(2, historySize)];
 		for(unsigned j=0; j< (1U << historySize); j++){
 			table_ptr->state_chooser[0][j] = fsmState;
 		} 
-
 	}
 
 	table_ptr->btb_stats = {0,0,0};
-
-
 	return 0;
 }
 
@@ -208,31 +203,22 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			for(unsigned j=0; j< (1U << table_ptr->historySize); j++){
 				table_ptr->state_chooser[state_index][j] = table_ptr->fsmState;
 			} 
-
-
 		}
-	}
-
-	else{//we found a match with a tag
-
+	} else {//we found a match with a tag
 		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
 		if(taken){
 			(table_ptr->rows[hist_index]).history_reg +=1;
 		}
-
 		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
-
 	}
 
-
-	// upadte statitics and fsm state
+	// update statistics and fsm state
 	int old_state;
 	int new_state;
 	if(table_ptr->isGlobalTable){
-
 	 	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
-	}
-	else{
+	} 
+	else {
 		old_state = table_ptr->fsmState;
 	}
 
