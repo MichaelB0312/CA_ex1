@@ -34,55 +34,6 @@ struct BTB_table{
 // we will act like in ADT init style
 struct BTB_table *table_ptr; 
 
-
-/*
- * helper function which use direc_mapping to retrieve some useful inidices, tag address and set history_reg
- * param[in] pc - the branch instruction address
- * param[out] BTB_index - the requested row in BTB table
- * param[out] hist_index - history_reg row index - for GlobalHist=0, fot LocalHist=BTB_index
- * param[out] state_index - which counter array to choose.
- * param[out] pc_tag - retrieve pc_tag.
- * param[out] history_mask - mask in size of history register
- * return true when prediction is taken, otherwise (prediction is not taken) return false
- */
-void direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_index, uint32_t *pc_tag, uint32_t *history_mask){
-	// from this function, we use: BTB_index, hist_index, state_index,  pc_tag
-	uint32_t shift_pc = pc >> 2;  //00zzz...zz yyyy
-	uint32_t index_mask =  table_ptr->btbSize - 1; //000..1111
-	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1; // 00..111111
-	*history_mask = pow(2,table_ptr->historySize)-1;  
-	*BTB_index = (shift_pc & index_mask); //000..yyyy
-	uint32_t shift_tag = shift_pc >> int(log2(table_ptr->btbSize)); //00...zzzzz
-	*pc_tag = shift_tag & tag_mask; // 00...zzzzz
-
-	//index of hist and state - global or local
-	*hist_index = 0;
-	*state_index = 0; 
-	if (!(table_ptr->isGlobalHist)){
-		*hist_index = *BTB_index;
-	}
-	if(!(table_ptr->isGlobalTable)){
-		*state_index = *BTB_index;
-	}
-
-	//shared
-	uint32_t history_p = 0;
-	history_p = (table_ptr->rows[*hist_index]).history_reg;
-	if(table_ptr->Shared == 1){
-		history_p = shift_pc ^ history_p;
-	}
-	if (table_ptr->Shared == 2){
-		uint32_t shift_pc_16 = 0;
-		shift_pc_16 = pc >> 16;
-		history_p = shift_pc_16 ^ history_p;
-	}
-	history_p = history_p & *history_mask;
-	(table_ptr->rows[*hist_index]).history_reg = history_p;	
-	if(table_ptr->Shared == 0){
-		(table_ptr->rows[*hist_index]).history_reg = history_p;	
-	}
-}
-
 ////zzzzz...zzzz yyyy 00 remeber direct mapping!!
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
 			bool isGlobalHist, bool isGlobalTable, int Shared){
@@ -139,12 +90,58 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 	return 0;
 }
 
+/*
+ * helper function which use direc_mapping to retrieve some useful inidices, tag address and set history_reg
+ * param[in] pc - the branch instruction address
+ * param[out] BTB_index - the requested row in BTB table
+ * param[out] hist_index - history_reg row index - for GlobalHist=0, fot LocalHist=BTB_index
+ * param[out] state_index - which counter array to choose.
+ * param[out] pc_tag - retrieve pc_tag.
+ * param[out] history_mask - mask in size of history register
+ * return true when prediction is taken, otherwise (prediction is not taken) return false
+ */
+uint32_t direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state_index, uint32_t *pc_tag, uint32_t *history_mask){
+	// from this function, we use: BTB_index, hist_index, state_index,  pc_tag
+	uint32_t shift_pc = pc >> 2;  //00zzz...zz yyyy
+	uint32_t index_mask =  table_ptr->btbSize - 1; //000..1111
+	uint32_t tag_mask = pow(2,table_ptr->tagSize)-1; // 00..111111
+	*history_mask = pow(2,table_ptr->historySize)-1;  
+	*BTB_index = (shift_pc & index_mask); //000..yyyy
+	uint32_t shift_tag = shift_pc >> int(log2(table_ptr->btbSize)); //00...zzzzz
+	*pc_tag = shift_tag & tag_mask; // 00...zzzzz
+
+	//index of hist and state - global or local
+	*hist_index = 0;
+	*state_index = 0; 
+	if (!(table_ptr->isGlobalHist)){
+		*hist_index = *BTB_index;
+	}
+	if(!(table_ptr->isGlobalTable)){
+		*state_index = *BTB_index;
+	}
+
+	//shared
+	uint32_t history_p = 0;
+	history_p = (table_ptr->rows[*hist_index]).history_reg;
+	if(table_ptr->Shared == 1){
+		history_p = shift_pc ^ history_p;
+	}
+	if (table_ptr->Shared == 2){
+		uint32_t shift_pc_16 = 0;
+		shift_pc_16 = pc >> 16;
+		history_p = shift_pc_16 ^ history_p;
+	}
+	history_p = history_p & *history_mask;
+	return history_p;
+}
+
+
 bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	uint32_t BTB_index; int hist_index; int state_index; 
 	uint32_t pc_tag; uint32_t history_mask;
 
-	direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);	
+	uint32_t history_p =  direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);	
 	
 	//check if target is known
 	if ((table_ptr->rows[BTB_index]).target == 0){
@@ -158,7 +155,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 	}
 
 	//tag matches, jump according to state	
-	int state = table_ptr->state_chooser[state_index][(table_ptr->rows[hist_index]).history_reg];
+	int state = table_ptr->state_chooser[state_index][history_p];
 	if ((state == WNT) || (state == SNT)){
 		*dst = pc + 4;
 		return false;
@@ -176,9 +173,9 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	uint32_t BTB_index; int hist_index; int state_index; 
 	uint32_t pc_tag; uint32_t history_mask;
 
-	direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
+	uint32_t history_p = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
 
-	uint32_t old_hist_reg = (table_ptr->rows[hist_index]).history_reg;
+	uint32_t old_hist_reg = history_p;
 
 	(table_ptr->rows[BTB_index]).target = targetPc;
 	//if tag not matches to any row, insert a new row
@@ -215,18 +212,25 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	// update statistics and fsm state
 	int old_state;
 	int new_state;
-	if(table_ptr->isGlobalTable){
+	//if(table_ptr->isGlobalTable){
 	 	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
-	} 
-	else {
-		old_state = table_ptr->fsmState;
-	}
+	//} 
+	//else {
+	//	old_state = table_ptr->fsmState;
+	//}
 
 	(table_ptr->btb_stats).br_num++;
+	int flush = (table_ptr->btb_stats).flush_num;
+	int branch = (table_ptr->btb_stats).br_num;
+
+	//flush number
+	if( (taken && (targetPc != pred_dst)) || ((!taken) && (pred_dst != pc+4)))
+		(table_ptr->btb_stats).flush_num++;
+		
 
 	//taken case
 	if(taken && ((old_state == SNT) || (old_state == WNT))){
-		(table_ptr->btb_stats).flush_num++;
+		//(table_ptr->btb_stats).flush_num++;
 		new_state = old_state + 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}
@@ -234,8 +238,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	if(taken && ((old_state == ST) || (old_state == WT))){
 		if(old_state == ST){//stuck in a loop
 			new_state = old_state;
-		}
-		else{
+		} else {
 			new_state = old_state + 1;
 		}
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
@@ -253,7 +256,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	}
 
 	if((!taken) && ((old_state == ST) || (old_state == WT))){
-		(table_ptr->btb_stats).flush_num++;
+		//(table_ptr->btb_stats).flush_num++;
 		new_state = old_state - 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}	
