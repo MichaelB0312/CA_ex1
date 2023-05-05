@@ -5,7 +5,12 @@
 #include <cmath>
 #include <cstring>
 #define TARGET_SIZE 30
-enum State{SNT,WNT,WT,ST};
+//enum State{SNT,WNT,WT,ST};
+#define SNT 0
+#define WNT 1
+#define WT 2
+#define ST 3
+
 
 
 typedef struct 
@@ -123,13 +128,15 @@ uint32_t direct_map(uint32_t pc, uint32_t *BTB_index,int *hist_index, int *state
 	//shared
 	uint32_t history_p = 0;
 	history_p = (table_ptr->rows[*hist_index]).history_reg;
-	if(table_ptr->Shared == 1){
-		history_p = shift_pc ^ history_p;
-	}
-	if (table_ptr->Shared == 2){
-		uint32_t shift_pc_16 = 0;
-		shift_pc_16 = pc >> 16;
-		history_p = shift_pc_16 ^ history_p;
+	if(table_ptr->isGlobalTable){
+		if(table_ptr->Shared == 1){
+			history_p = shift_pc ^ history_p;
+		}
+		if (table_ptr->Shared == 2){
+			uint32_t shift_pc_16 = 0;
+			shift_pc_16 = pc >> 16;
+			history_p = shift_pc_16 ^ history_p;
+		}
 	}
 	history_p = history_p & *history_mask;
 	return history_p;
@@ -188,7 +195,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 			(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
 		}else{
 			(table_ptr->rows[hist_index]).history_reg = 0;
-			old_hist_reg = 0;
+			old_hist_reg = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
 		}
 		if(taken){
 			(table_ptr->rows[hist_index]).history_reg +=1;
@@ -212,7 +219,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	// update statistics and fsm state
 	int old_state;
 	int new_state;
-	//if(table_ptr->isGlobalTable){
+	//if((table_ptr->rows[BTB_index]).tag == pc_tag){
 	 	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
 	//} 
 	//else {
@@ -230,7 +237,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 
 	//taken case
 	if(taken && ((old_state == SNT) || (old_state == WNT))){
-		//(table_ptr->btb_stats).flush_num++;
 		new_state = old_state + 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}
@@ -256,7 +262,6 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	}
 
 	if((!taken) && ((old_state == ST) || (old_state == WT))){
-		//(table_ptr->btb_stats).flush_num++;
 		new_state = old_state - 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}	
