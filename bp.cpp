@@ -18,6 +18,7 @@ typedef struct
 	unsigned int tag;  // we will do a mask and, based on tag_size, we will stay only the relevant bits.
 	unsigned int target; // full 32 bits address
 	unsigned int history_reg; //also will multiplied with mask, based on historysize, we will stay with the true register size
+	bool valid_bit;
 					//need mask's multiplication every update! because we shift left the bits every iteration
 } BTB_row;
 
@@ -151,8 +152,9 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 	uint32_t history_p =  direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);	
 	
 	//check if target is known
-	if ((table_ptr->rows[BTB_index]).target == 0){
+	if ((table_ptr->rows[BTB_index]).valid_bit == 0){
 		*dst = pc + 4;
+		(table_ptr->rows[BTB_index]).valid_bit = 1; 
 		return false;
 	}
 	//check if tag matches
@@ -180,9 +182,9 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	uint32_t BTB_index; int hist_index; int state_index; 
 	uint32_t pc_tag; uint32_t history_mask;
 
-	uint32_t history_p = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
+	uint32_t old_hist_reg = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
 
-	uint32_t old_hist_reg = history_p;
+	(table_ptr->btb_stats).br_num++;
 
 	(table_ptr->rows[BTB_index]).target = targetPc;
 	//if tag not matches to any row, insert a new row
@@ -191,44 +193,23 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 		// Namely, hist_index=0. Only tag and target are different in each row(=BTB_index).
 		(table_ptr->rows[BTB_index]).tag = pc_tag;
 
-		if(table_ptr->isGlobalHist){
-			(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
-		}else{
+		if(!(table_ptr->isGlobalHist)){
 			(table_ptr->rows[hist_index]).history_reg = 0;
 			old_hist_reg = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
 		}
-		if(taken){
-			(table_ptr->rows[hist_index]).history_reg +=1;
-		}
-
-		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
 
 		if(!(table_ptr->isGlobalTable)){
 			for(unsigned j=0; j< (1U << table_ptr->historySize); j++){
 				table_ptr->state_chooser[state_index][j] = table_ptr->fsmState;
 			} 
 		}
-	} else {//we found a match with a tag
-		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
-		if(taken){
-			(table_ptr->rows[hist_index]).history_reg +=1;
-		}
-		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
 	}
 
 	// update statistics and fsm state
 	int old_state;
 	int new_state;
-	//if((table_ptr->rows[BTB_index]).tag == pc_tag){
-	 	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
-	//} 
-	//else {
-	//	old_state = table_ptr->fsmState;
-	//}
 
-	(table_ptr->btb_stats).br_num++;
-	int flush = (table_ptr->btb_stats).flush_num;
-	int branch = (table_ptr->btb_stats).br_num;
+	old_state = table_ptr->state_chooser[state_index][old_hist_reg];
 
 	//flush number
 	if( (taken && (targetPc != pred_dst)) || ((!taken) && (pred_dst != pc+4)))
@@ -265,6 +246,28 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 		new_state = old_state - 1;
 		table_ptr->state_chooser[state_index][old_hist_reg] = new_state;
 	}	
+	
+	//update history 
+	if ((table_ptr->rows[BTB_index]).tag != pc_tag){
+		//insert new row. In global_hist case, we use history_reg of first row to all rows in BTB
+		// Namely, hist_index=0. Only tag and target are different in each row(=BTB_index).
+		(table_ptr->rows[BTB_index]).tag = pc_tag;
+
+		if(table_ptr->isGlobalHist){
+			(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
+		}else{
+			(table_ptr->rows[hist_index]).history_reg = 0;
+		}
+
+	} else {//we found a match with a tag
+		(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg << 1;
+	}
+
+	if(taken){
+		(table_ptr->rows[hist_index]).history_reg +=1;
+	}
+	(table_ptr->rows[hist_index]).history_reg = (table_ptr->rows[hist_index]).history_reg & history_mask;
+
 
 	return;
 }
