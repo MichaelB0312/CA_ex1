@@ -11,15 +11,13 @@
 #define WT 2
 #define ST 3
 
-
-
 typedef struct 
 {
-	unsigned int tag;  // we will do a mask and, based on tag_size, we will stay only the relevant bits.
+	unsigned int tag;  // to be multiplied with mask and based on tag_size to stay only with relevant bits.
 	unsigned int target; // full 32 bits address
-	unsigned int history_reg; //also will multiplied with mask, based on historysize, we will stay with the true register size
+	unsigned int history_reg; //to be multiplied with mask based on historysize to stay with the true register size
 	bool valid_bit;
-					//need mask's multiplication every update! because we shift left the bits every iteration
+	//need mask's multiplication every update! because we shift left the bits every iteration
 } BTB_row;
 
 struct BTB_table{
@@ -32,7 +30,7 @@ struct BTB_table{
     int Shared;
 
     BTB_row* rows;
-    unsigned **state_chooser;  //pointer to state-chooser arrays or array(global case) of size: 2^history_size
+    unsigned **state_chooser;  //pointer to state-chooser (machines) arrays or array(global case) of size: 2^history_size
 
     SIM_stats btb_stats; //aggregating statsitics
 };
@@ -151,7 +149,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 
 	uint32_t history_p =  direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);	
 	
-	//check if target is known
+	//check if row has been filled already
 	if ((table_ptr->rows[BTB_index]).valid_bit == 0){
 		*dst = pc + 4;
 		(table_ptr->rows[BTB_index]).valid_bit = 1; 
@@ -163,7 +161,7 @@ bool BP_predict(uint32_t pc, uint32_t *dst){
 		return false;
 	}
 
-	//tag matches, jump according to state	
+	//tag matches an row was filled, jump according to state	
 	int state = table_ptr->state_chooser[state_index][history_p];
 	if ((state == WNT) || (state == SNT)){
 		*dst = pc + 4;
@@ -183,7 +181,7 @@ void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst){
 	uint32_t pc_tag; uint32_t history_mask;
 
 	uint32_t old_hist_reg = direct_map(pc, &BTB_index, &hist_index, &state_index, &pc_tag, &history_mask);
-
+	//update branch number
 	(table_ptr->btb_stats).br_num++;
 
 	(table_ptr->rows[BTB_index]).target = targetPc;
